@@ -1,156 +1,75 @@
-import os
-import logging
+import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from flask import Flask
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+import threading
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Bot Token (সরাসরি দেওয়া)
-TOKEN = "8445686197:AAF2WM3kqqWoyohoOoSGmseRa-uJYBJVLPU"
+# Bot Token
+BOT_TOKEN = "8445686197:AAF2WM3kqqWoyohoOoSGmseRa-uJYBJVLPU"
 ADMIN_ID = 8194390770
 
-# /start কমান্ড
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    keyboard = [
-        [InlineKeyboardButton("👤 দেখুন আমার Chat ID", callback_data='show_chatid')],
-        [InlineKeyboardButton("📢 আপডেট চ্যানেল", url='https://t.me/earning_channel24')],
-        [InlineKeyboardButton("👨‍💻 ডেভেলপার", url='https://t.me/bot_developer_io')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    welcome_text = (
-        f"🤖 **হ্যালো {user.first_name}!**\n\n"
-        "আমি চ্যাট আইডি বট 🔥\n"
-        "আপনার চ্যাট আইডি দেখতে নিচের বাটনে ক্লিক করুন।\n\n"
-        "📢 আপডেট পেতে চ্যানেল জয়েন করুন\n"
-        "👨‍💻 ডেভেলপার: @bot_developer_io"
-    )
-    
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
+bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask(__name__)
 
-# Chat ID দেখানো
-async def show_chatid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+# /start কমান্ড
+@bot.message_handler(commands=['start'])
+def start(message):
+    user = message.from_user
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    btn1 = InlineKeyboardButton("👤 দেখুন আমার Chat ID", callback_data='show_chatid')
+    btn2 = InlineKeyboardButton("📢 আপডেট চ্যানেল", url='https://t.me/earning_channel24')
+    btn3 = InlineKeyboardButton("👨‍💻 ডেভেলপার", url='https://t.me/bot_developer_io')
+    keyboard.add(btn1, btn2, btn3)
     
-    user = query.from_user
+    bot.send_message(
+        message.chat.id, 
+        f"🤖 হ্যালো {user.first_name}!\n\nআমি চ্যাট আইডি বট 🔥\n\nআপনার চ্যাট আইডি দেখতে নিচের বাটনে ক্লিক করুন।", 
+        reply_markup=keyboard
+    )
+
+# বাটন ক্লিক করলে Chat ID দেখাবে
+@bot.callback_query_handler(func=lambda call: call.data == 'show_chatid')
+def show_chatid(call):
+    user = call.from_user
     chat_id = user.id
     username = user.username or "None"
-    first_name = user.first_name or ""
-    last_name = user.last_name or ""
+    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    current_time = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
     
-    # বর্তমান তারিখ
-    current_date = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    msg = f"🆔 আপনার Chat ID: {chat_id}\n\n👤 নাম: {full_name}\n📛 ইউজারনাম: @{username}\n📅 তারিখ: {current_time}"
     
-    message_text = (
-        f"🆔 **আপনার Chat ID:** `{chat_id}`\n"
-        f"👤 **নাম:** {first_name} {last_name}\n"
-        f"📛 **ইউজারনেম:** @{username}\n"
-        f"📅 **তারিখ:** {current_date}\n\n"
-        f"✅ কপি করুন: `{chat_id}`"
-    )
-    
-    # প্রোফাইল ছবি পাওয়ার চেষ্টা
+    # প্রোফাইল ছবি দেখানোর চেষ্টা
     try:
-        photos = await context.bot.get_user_profile_photos(user.id, limit=1)
+        photos = bot.get_user_profile_photos(user.id, limit=1)
         if photos.total_count > 0:
-            photo = photos.photos[0][-1].file_id
-            await query.message.reply_photo(photo=photo, caption=message_text, parse_mode='Markdown')
+            bot.send_photo(call.message.chat.id, photos.photos[0][-1].file_id, caption=msg)
         else:
-            await query.message.reply_text(message_text, parse_mode='Markdown')
-    except Exception as e:
-        logger.error(f"Photo error: {e}")
-        await query.message.reply_text(message_text, parse_mode='Markdown')
-
-# ফরওয়ার্ড মেসেজ হ্যান্ডলার
-async def handle_forward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.message
+            bot.send_message(call.message.chat.id, msg)
+    except:
+        bot.send_message(call.message.chat.id, msg)
     
-    # চেক করি মেসেজ ফরওয়ার্ড কিনা
-    if message.forward_origin:
-        chat_id = message.chat.id
-        user = message.from_user
-        
-        response_text = (
-            f"🔄 **ফরওয়ার্ড মেসেজ!**\n\n"
-            f"🆔 **আপনার Chat ID:** `{chat_id}`\n"
-            f"👤 **নাম:** {user.first_name}\n\n"
-            f"💡 এই Chat ID টি আপনার বটের জন্য ব্যবহার করুন।"
-        )
-        await message.reply_text(response_text, parse_mode='Markdown')
+    bot.answer_callback_query(call.id)
 
-# সরাসরি কমান্ড দিয়ে Chat ID দেখানো
-async def get_my_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    chat_id = update.effective_chat.id
-    
-    text = f"🆔 **আপনার Chat ID:** `{chat_id}`\n👤 **ইউজার:** {user.first_name}"
-    await update.message.reply_text(text, parse_mode='Markdown')
+# সরাসরি কমান্ড
+@bot.message_handler(commands=['myid', 'chatid', 'id'])
+def get_id(message):
+    bot.reply_to(message, f"🆔 আপনার Chat ID: {message.chat.id}")
 
-# অ্যাডমিন প্যানেল (ঐচ্ছিক)
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("⛔ আপনি অ্যাডমিন নন!")
-        return
-    
-    keyboard = [
-        [InlineKeyboardButton("📊 বট তথ্য", callback_data='bot_stats')],
-        [InlineKeyboardButton("👥 ইউজার কাউন্ট", callback_data='user_count')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("🔧 **অ্যাডমিন প্যানেল**", reply_markup=reply_markup, parse_mode='Markdown')
+# ফরওয়ার্ড মেসেজ ধরবে
+@bot.message_handler(func=lambda m: m.forward_origin is not None)
+def forward_handler(message):
+    bot.reply_to(message, f"🔄 ফরওয়ার্ড মেসেজ!\n\n🆔 আপনার Chat ID: {message.chat.id}")
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    if query.data == 'bot_stats':
-        await query.message.reply_text("🤖 বট অনলাইন আছে!\n✅ সব ঠিকঠাক কাজ করছে।")
-    elif query.data == 'user_count':
-        await query.message.reply_text("📊 বর্তমানে নির্দিষ্ট ইউজার কাউন্ট দেখানো সম্ভব নয়।")
+# Flask রুট
+@app.route('/')
+def home():
+    return "Chat ID Bot is Running!"
 
-# Error Handler
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.error(f"Update {update} caused error {context.error}")
-
-def main():
-    """বট চালু করার ফাংশন"""
-    try:
-        # Application তৈরি (সরাসরি token সহ)
-        application = Application.builder().token(TOKEN).build()
-        
-        # হ্যান্ডলার যোগ
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("myid", get_my_id))
-        application.add_handler(CommandHandler("chatid", get_my_id))
-        application.add_handler(CommandHandler("id", get_my_id))
-        application.add_handler(CommandHandler("admin", admin_panel))
-        
-        # Callback handlers
-        application.add_handler(CallbackQueryHandler(show_chatid, pattern='show_chatid'))
-        application.add_handler(CallbackQueryHandler(button_handler, pattern='^(bot_stats|user_count)$'))
-        
-        # Message handlers
-        from telegram.ext import MessageHandler, filters
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_forward))
-        
-        # Error handler
-        application.add_error_handler(error_handler)
-        
-        # বট চালু
-        logger.info("🤖 Chat ID Bot is starting...")
-        print("✅ Bot is running! Press Ctrl+C to stop.")
-        
-        # Polling start
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
-        
-    except Exception as e:
-        logger.error(f"Failed to start bot: {e}")
-        print(f"Error: {e}")
+# বট চালু
+def run_bot():
+    print("Bot started...")
+    bot.infinity_polling()
 
 if __name__ == "__main__":
-    main()
+    threading.Thread(target=run_bot).start()
+    app.run(host='0.0.0.0', port=8080)
